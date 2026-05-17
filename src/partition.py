@@ -18,38 +18,30 @@ from tools import write_tecplot
 
 def build_adjacency(mesh_data):
     nodes, elements, boundaries = mesh_data
+    elem_info = ElemInfo()
 
-    # count the number of elements of surrounding each node
-    parts = zeros(len(nodes), dtype=int32)  
-    for iEelem in range(elements.GetTotalNum()):
-        for k in range(elements.GetNumPart(iEelem)):
-            node_idx = elements.GetData(iEelem, k)
-            parts[node_idx] += 1
-    sur_elems = CSR(parts, dtype=int32)     # sur elem of each node
+    adjacency_sets = [set() for _ in range(len(nodes))]
 
-    parts = zeros(len(nodes), dtype=int32)
-    for iEelem in range(elements.GetTotalNum()):
-        for k in range(elements.GetNumPart(iEelem)):
-            node_idx = elements.GetData(iEelem, k)
-            idx = parts[node_idx]
-            sur_elems.SetData(node_idx, idx, iEelem)
-            parts[node_idx] += 1
+    for iElem in range(elements.GetTotalNum()):
+        elem_type = int(elements.elem_types[iElem])
+        n_nodes = elements.GetNumPart(iElem)
 
-    # get pt surrouding pt
+        if elem_info.n_nodes[elem_type] == 0:
+            raise ValueError('Unsupported element type {}.'.format(elem_type))
+
+        for iNode in range(n_nodes):
+            iPoint = int(elements.GetData(iElem, iNode))
+            n_neighbor_nodes = int(elem_info.n_neighbor_nodes[elem_type, iNode])
+
+            for iNeighbor in range(n_neighbor_nodes):
+                jNode = int(elem_info.neighbor_nodes[elem_type, iNode, iNeighbor])
+                jPoint = int(elements.GetData(iElem, jNode))
+                adjacency_sets[iPoint].add(jPoint)
+
     adjacency = []
     for iNode in range(len(nodes)):
-        num_sur_elems = sur_elems.GetNumPart(iNode)
-        sur_nodes = set()
-        for i in range(num_sur_elems):
-            iEelem = sur_elems.GetData(iNode, i)
-            for k in range(elements.GetNumPart(iEelem)):
-                node_idx = elements.GetData(iEelem, k)
-                if node_idx != iNode:
-                    sur_nodes.add(node_idx)
-        sur_nodes = [int (idx) for idx in list(sur_nodes)]
-        adjacency.append(sur_nodes)
-    #
-    
+        adjacency.append(sorted(adjacency_sets[iNode]))
+
     return adjacency
 
 def graph_partition(adjacency, n_partitions):

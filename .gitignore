@@ -1,2 +1,5 @@
 mesh/
+output/
+tmp/
 __pycache__/
+Docs/
