@@ -9,8 +9,11 @@ All Copyright (c) 2026 Lixiang Jiang. All rights reserved.
 from mesh import ElemInfo, CT2Node, read_SU2_mesh
 import pymetis
 from numpy import array, zeros, int32, float64
+import numpy as np
+from mpi4py import MPI
 
 from DS import CSR
+from tools import write_tecplot
 
 
 def build_adjacency(mesh_data):
@@ -54,6 +57,11 @@ def graph_partition(adjacency, n_partitions):
     edge_cuts, parts = pymetis.part_graph(n_partitions, adjacency=adjacency)
     return parts
 
+def parts_info(parts):
+    unique_parts = set(parts)
+    part_counts = {part: parts.count(part) for part in unique_parts}
+    return part_counts
+
 if __name__ == "__main__":
     mesh_pth = r'mesh/mesh_RAE2822_turb.su2'
     res = read_SU2_mesh(mesh_pth)
@@ -62,5 +70,17 @@ if __name__ == "__main__":
     print(adjacency[:5])
     parts = graph_partition(adjacency, n_partitions=4)
     print(parts[:20])
+    part_counts = parts_info(parts)
+    print(part_counts)
+
+    nodes, elements, boundaries = res
+
+    nodes = array(nodes, dtype=float64)
+    parts = array(parts, dtype=float64).reshape(-1, 1)
+    nodes = np.concatenate((nodes, parts), axis=1)
+
+    val_names = ['X', 'Y', 'Parts']
+    save_pth = r'output/mesh_RAE2822_turb_partition.plt'
+    write_tecplot(nodes, elements, val_names, save_pth)
 
 
