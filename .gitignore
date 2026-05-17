@@ -1,4 +1,5 @@
-mesh/
+mesh/*
+!mesh/partition.lay
 output/
 tmp/
 __pycache__/

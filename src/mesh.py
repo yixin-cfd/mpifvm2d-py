@@ -10,7 +10,7 @@ Try to use the Fortran syntax style.!!!
 from DS import CSR
 from numpy import array, zeros, float64, int32, ones
 import numpy as np
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 max_cgns_type = 50
 max_face = 6
@@ -19,7 +19,7 @@ max_node_elem = 8
 
 
 
-CT2Node = zeros((max_cgns_type, 1), dtype=int32)    # CGNS type to number of nodes
+CT2Node = zeros(max_cgns_type, dtype=int32)    # CGNS type to number of nodes
 CT2Node[3] = 2    # Line
 CT2Node[5] = 3    # Triangle
 CT2Node[9] = 4    # Quadrilateral
@@ -142,11 +142,6 @@ class ElemInfo:
         self.neighbor_nodes[et, 2, 0:3] = [0, 1, 3]
         self.neighbor_nodes[et, 3, 0:3] = [0, 1, 2]
 
-
-
-class ElemView:
-    """获取面的数量，构成面的节点, 以及每个面包含的节点数量, 每个点的邻接点数量， 每个点的邻接点, """
-    pass
 
 
 def read_SU2_mesh(mesh_pth):
