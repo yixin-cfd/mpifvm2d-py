@@ -132,20 +132,29 @@ def build_partition_meshes(mesh_data, point_color, n_partitions, n_halo_layer=2)
                             local_point_layers[iRank][jPoint] = iLayer
                             next_frontier.add(jPoint)
             frontier = next_frontier
-
+            
     # 如果某个边界单元的任意一个点出现在当前 rank 的局部点集合里，那么这个边界单元也要加入当前 rank 的 marker 数据
     for iRank in range(n_partitions):
-        local_point_ids = set(local_point_layers[iRank].keys())
+        owned_point_ids = {
+            iPoint
+            for iPoint, iLayer in local_point_layers[iRank].items()
+            if iLayer == 0
+        }
+
         for iMarker, boundary in enumerate(boundaries):
             bnd_elems = boundary['elems']
+
             for iBndElem in range(bnd_elems.GetTotalNum()):
                 bnd_nodes = _get_csr_row(bnd_elems, iBndElem)
-                if any(iPoint in local_point_ids for iPoint in bnd_nodes):
+
+                # 只要这个边界单元上存在当前 rank 拥有的点，就加入该 rank 的 marker
+                if any(iPoint in owned_point_ids for iPoint in bnd_nodes):
                     local_marker_elem_ids[iRank][iMarker].add(iBndElem)
+
+                    # 为了保证边界单元连接完整，把边界单元上的其他点补进局部点集合
                     for iPoint in bnd_nodes:
                         if iPoint not in local_point_layers[iRank]:
-                            local_point_layers[iRank][iPoint] = n_halo_layer    # marker as maximum halo layer for boundary points
-                            local_point_ids.add(iPoint)
+                            local_point_layers[iRank][iPoint] = n_halo_layer
 
     part_meshes = []
 
@@ -153,9 +162,9 @@ def build_partition_meshes(mesh_data, point_color, n_partitions, n_halo_layer=2)
         owned_points = [iPoint for iPoint, iLayer in local_point_layers[iRank].items() if iLayer == 0]
         ghost_points = [iPoint for iPoint, iLayer in local_point_layers[iRank].items() if iLayer > 0]
         owned_points.sort()
-        ghost_points.sort(key=lambda iPoint: (local_point_layers[iRank][iPoint], iPoint))
+        ghost_points.sort(key=lambda iPoint: (local_point_layers[iRank][iPoint], iPoint))   # ghost 点先按 halo layer 排序，再按全局编号排序
 
-        local_to_global_point = np.array(owned_points + ghost_points, dtype=int64)
+        local_to_global_point = np.array(owned_points + ghost_points, dtype=int64)  
         global_to_local_point = {int(iGlobal): iLocal for iLocal, iGlobal in enumerate(local_to_global_point)}
         point_halo_layer = np.array([local_point_layers[iRank][int(iGlobal)] for iGlobal in local_to_global_point],
                                     dtype=int32)
@@ -208,10 +217,10 @@ def build_comm_patterns(part_meshes, point_color):
     recv_global = [[set() for _ in range(n_partitions)] for _ in range(n_partitions)]
 
     for iRank, part_mesh in enumerate(part_meshes):
-        for iLocalPoint in range(part_mesh.n_point_domain, part_mesh.n_point):
+        for iLocalPoint in range(part_mesh.n_point_domain, part_mesh.n_point):  # foreach ghost point
             iGlobalPoint = int(part_mesh.local_to_global_point[iLocalPoint])
             owner = int(point_color[iGlobalPoint])
-            recv_global[iRank][owner].add(iGlobalPoint)
+            recv_global[iRank][owner].add(iGlobalPoint)             # dual operation
             send_global[owner][iRank].add(iGlobalPoint)
 
     for iRank, part_mesh in enumerate(part_meshes):
@@ -305,7 +314,7 @@ if __name__ == "__main__":
     mesh_pth = r'mesh/mesh_RAE2822_turb.su2'
     res = read_SU2_mesh(mesh_pth)
 
-    n_partitions = 4
+    n_partitions = 16
 
     adjacency = build_adjacency(res)
     print(adjacency[:5])
