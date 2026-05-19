@@ -132,7 +132,7 @@ def build_partition_meshes(mesh_data, point_color, n_partitions, n_halo_layer=2)
                             local_point_layers[iRank][jPoint] = iLayer
                             next_frontier.add(jPoint)
             frontier = next_frontier
-            
+
     # 如果某个边界单元的任意一个点出现在当前 rank 的局部点集合里，那么这个边界单元也要加入当前 rank 的 marker 数据
     for iRank in range(n_partitions):
         owned_point_ids = {
@@ -260,6 +260,100 @@ def build_comm_patterns(part_meshes, point_color):
 
     return part_meshes
 
+
+def build_comm_pattern_parallel(local_mesh, point_color, comm):
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
+    point_color = np.array(point_color, dtype=int32)
+
+    recv_global_rows = [[] for _ in range(size)]
+
+    # 当前 rank 的 ghost 点，需要从它们的 owner rank 接收
+    for iLocalPoint in range(local_mesh.n_point_domain, local_mesh.n_point):
+        iGlobalPoint = int(local_mesh.local_to_global_point[iLocalPoint])
+        owner = int(point_color[iGlobalPoint])
+
+        if owner == rank:
+            raise ValueError(
+                'Rank {} has owned point {} in ghost range.'.format(
+                    rank, iGlobalPoint
+                )
+            )
+
+        recv_global_rows[owner].append(iGlobalPoint)
+
+    for jRank in range(size):
+        recv_global_rows[jRank] = sorted(set(recv_global_rows[jRank]))
+
+    # 把“我需要从别人那里收什么点”发给对应 owner
+    # recv_req[jRank] 表示 jRank 请求我发送哪些 global points
+    recv_req = comm.alltoall(recv_global_rows)
+
+    send_global_rows = [[] for _ in range(size)]
+
+    for jRank in range(size):
+        send_global_rows[jRank] = sorted(set(int(x) for x in recv_req[jRank]))
+
+    # 安全检查：别人请求我发送的点，必须确实是我拥有的点，并且在我的 local_mesh 里
+    for jRank in range(size):
+        for iGlobalPoint in send_global_rows[jRank]:
+            owner = int(point_color[iGlobalPoint])
+
+            if owner != rank:
+                raise ValueError(
+                    'Rank {} asked to send point {}, but owner is {}.'.format(
+                        rank, iGlobalPoint, owner
+                    )
+                )
+
+            if iGlobalPoint not in local_mesh.global_to_local_point:
+                raise ValueError(
+                    'Rank {} needs to send point {}, but it is not in local mesh.'.format(
+                        rank, iGlobalPoint
+                    )
+                )
+
+    send_rows = []
+    recv_rows = []
+
+    for jRank in range(size):
+        send_rows.append([
+            local_mesh.global_to_local_point[iGlobalPoint]
+            for iGlobalPoint in send_global_rows[jRank]
+        ])
+
+        recv_rows.append([
+            local_mesh.global_to_local_point[iGlobalPoint]
+            for iGlobalPoint in recv_global_rows[jRank]
+        ])
+
+    send_nodes = _build_csr_from_rows(send_rows, dtype=int32)
+    recv_nodes = _build_csr_from_rows(recv_rows, dtype=int32)
+
+    send_point_global = _build_csr_from_rows(send_global_rows, dtype=int64)
+    recv_point_global = _build_csr_from_rows(recv_global_rows, dtype=int64)
+
+    send_ranks = []
+    recv_ranks = []
+
+    for jRank in range(size):
+        if send_nodes.GetNumPart(jRank) > 0:
+            send_ranks.append(jRank)
+
+        if recv_nodes.GetNumPart(jRank) > 0:
+            recv_ranks.append(jRank)
+
+    local_mesh.comm = CommPattern(
+        send_nodes=send_nodes,
+        recv_nodes=recv_nodes,
+        send_ranks=np.array(send_ranks, dtype=int32),
+        recv_ranks=np.array(recv_ranks, dtype=int32),
+        send_point_global=send_point_global,
+        recv_point_global=recv_point_global
+    )
+
+    return local_mesh
 
 def check_partition_meshes(part_meshes, point_color):
     point_color = np.array(point_color, dtype=int32)
