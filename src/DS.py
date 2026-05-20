@@ -12,7 +12,7 @@ try:
 except ImportError:
     MPI = None
 import numpy as np
-from numpy import empty, array, float64, zeros
+from numpy import empty, array, float64, zeros, int32
 
 
 class CSR:
@@ -104,7 +104,7 @@ class PartitionMesh:
         self.local_to_global_point = None
         self.global_to_local_point = None
 
-        self.elem_to_node = None
+        self.elem = None
         self.elem_type = None
         self.local_to_global_elem = None
 
@@ -117,6 +117,23 @@ class PartitionMesh:
     def GetNumMarker(self):
         return len(self.markers)
 
+
+
+def _get_csr_row(csr, iPart):
+    return [int(csr.GetData(iPart, idx)) for idx in range(csr.GetNumPart(iPart))]
+
+
+def _build_csr_from_rows(rows, dtype=int32):
+    parts = zeros(len(rows), dtype=int32)
+    for iPart, row in enumerate(rows):
+        parts[iPart] = len(row)
+
+    csr = CSR(parts, dtype=dtype)
+    for iPart, row in enumerate(rows):
+        for idx, val in enumerate(row):
+            csr.SetData(iPart, idx, val)
+
+    return csr
 
 if __name__ == "__main__":
     part = array([3, 2, 4], dtype=int)

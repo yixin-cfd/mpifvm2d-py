@@ -12,7 +12,7 @@ from numpy import array, zeros, int32, int64, float64
 import numpy as np
 from mpi4py import MPI
 
-from DS import CSR, MarkerData, CommPattern, PartitionMesh
+from DS import CSR, MarkerData, CommPattern, PartitionMesh, _build_csr_from_rows, _get_csr_row
 from tools import write_tecplot
 
 
@@ -49,21 +49,6 @@ def graph_partition(adjacency, n_partitions):
     return np.array(parts, dtype=int32)
 
 
-def _get_csr_row(csr, iPart):
-    return [int(csr.GetData(iPart, idx)) for idx in range(csr.GetNumPart(iPart))]
-
-
-def _build_csr_from_rows(rows, dtype=int32):
-    parts = zeros(len(rows), dtype=int32)
-    for iPart, row in enumerate(rows):
-        parts[iPart] = len(row)
-
-    csr = CSR(parts, dtype=dtype)
-    for iPart, row in enumerate(rows):
-        for idx, val in enumerate(row):
-            csr.SetData(iPart, idx, val)
-
-    return csr
 
 
 def _build_point_surrounding_elements(elements, n_point):
@@ -195,7 +180,7 @@ def build_partition_meshes(mesh_data, point_color, n_partitions, n_halo_layer=2)
         elem_to_node.AddAttr(elem_types=elem_type)
 
         part_mesh.n_elem = len(elem_ids)
-        part_mesh.elem_to_node = elem_to_node
+        part_mesh.elem = elem_to_node
         part_mesh.elem_type = elem_type
         part_mesh.local_to_global_elem = local_to_global_elem
 

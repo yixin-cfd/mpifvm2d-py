@@ -2,5 +2,6 @@ mesh/*
 !mesh/partition.lay
 output/
 tmp/
+tmp/*
 __pycache__/
 Docs/

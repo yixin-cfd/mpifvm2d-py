@@ -1,5 +1,4 @@
 '''
-Filename: mpifvm2d-py/src/run_partition.py
 Created Date: Sunday, May 17th 2026
 Author: Lixiang Jiang
 
@@ -16,7 +15,8 @@ from mpi4py import MPI
 from mesh import read_SU2_mesh
 from partition import (build_adjacency, graph_partition, build_partition_meshes,
                        build_comm_patterns, check_partition_meshes, parts_info, build_comm_pattern_parallel)
-from tools import write_tecplot
+from tools import write_tecplot, visualize_mesh
+from fvm import build_fvm_struct, Metrics, residual
 
 
 def parse_args():
@@ -25,6 +25,8 @@ def parse_args():
     parser.add_argument('--halo-layers', type=int, default=2, help='Number of FVM halo layers.')
     parser.add_argument('--output', default='output/mesh_partition.plt', help='Tecplot file for global point partition.')
     parser.add_argument('--no-output', action='store_true', help='Do not write Tecplot output.')
+    parser.add_argument('--RCM_show', action='store_true', help='show RCM ordering.')
+    parser.add_argument('--mesh_show', action='store_true', help='show mesh structure.')
     return parser.parse_args()
 
 def main():
@@ -89,6 +91,12 @@ def main():
     )
 
 
+    edges, vertices = build_fvm_struct(args, local_mesh, RCM_ordering=True)
+
+
+    if args.mesh_show:
+        visualize_mesh(local_mesh)
+
 if __name__ == '__main__':
-# mpiexec -np 5 python3 src/run_partition.py --mesh mesh/mesh_RAE2822_turb.su2 --halo-layers 2
+# mpiexec -np 5 python3 src/main.py --mesh mesh/mesh_RAE2822_turb.su2 --halo-layers 2
     main()

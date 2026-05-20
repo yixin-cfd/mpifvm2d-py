@@ -1,0 +1,18 @@
+{
+    "fortran.fortls.enabled": true,
+    "fortran.fortls.path": "/home/yixin/.conda/envs/fortran/bin/fortls",
+    "fortran.linter.includePaths": [
+        ".",
+        "/opt/openmpi-5.0.10/include",
+        "/opt/openmpi-5.0.10/lib"
+    ],
+    "fortran.fortls.notifyInit": true,
+    "fortran.fortls.maxCommentLineLength": -1,
+    "fortran.linter.extraArgs": [
+        "-I.",
+        "-I/opt/openmpi-5.0.10/include",
+        "-I/opt/openmpi-5.0.10/lib",
+        "-J.",
+        "-J/opt/openmpi-5.0.10/lib"
+    ]
+}

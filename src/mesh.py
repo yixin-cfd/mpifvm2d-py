@@ -54,7 +54,7 @@ class ElemInfo:
 
         # neighbor_nodes[elem_type, i_node, i_neighbor_node]
         self.n_neighbor_nodes = zeros((max_cgns_type, max_node_elem), dtype=int32)
-        self.neighbor_nodes = -ones((max_cgns_type, max_node_elem, max_node_elem))
+        self.neighbor_nodes = -ones((max_cgns_type, max_node_elem, max_node_elem), dtype=int32)
 
         self._init_line()
         self._init_triangle()
