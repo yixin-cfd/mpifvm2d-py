@@ -107,10 +107,10 @@ def visualize_mesh(mesh:PartitionMesh):
     for iPoint in range(mesh.n_point):
         x, y = mesh.coords[iPoint]
         if mesh.point_halo_layer[iPoint] == 1:
-            point_color = 'green'
+            point_color = '#0B7EB9'
             plt.plot(x, y, 'o', c=point_color)
         elif mesh.point_halo_layer[iPoint] == 2:
-            point_color = 'purple'
+            point_color = "#41C40D"  
             plt.plot(x, y, 'o', c=point_color)
 
     for iMarker in range(mesh.GetNumMarker()):

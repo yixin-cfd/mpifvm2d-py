@@ -16,7 +16,7 @@ from mesh import read_SU2_mesh
 from partition import (build_adjacency, graph_partition, build_partition_meshes,
                        build_comm_patterns, check_partition_meshes, parts_info, build_comm_pattern_parallel)
 from tools import write_tecplot, visualize_mesh
-from fvm import build_fvm_struct, Metrics, residual
+from fvm import build_fvm_struct, Metrics, residual, Metrics
 
 
 def parse_args():
@@ -91,7 +91,10 @@ def main():
     )
 
 
-    edges, vertices = build_fvm_struct(args, local_mesh, RCM_ordering=True)
+    local_mesh = build_fvm_struct(args, local_mesh, RCM_ordering=True)
+
+    Metrics(local_mesh)
+    
 
 
     if args.mesh_show:

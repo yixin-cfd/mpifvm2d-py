@@ -50,7 +50,7 @@ class ElemInfo:
         self.n_nodes_face = zeros((max_cgns_type, max_face), dtype=int32)
 
         # faces[elem_type, i_face, i_node_face]
-        self.faces = -ones((max_cgns_type, max_face, max_node_face))
+        self.faces = -ones((max_cgns_type, max_face, max_node_face), dtype=int32)
 
         # neighbor_nodes[elem_type, i_node, i_neighbor_node]
         self.n_neighbor_nodes = zeros((max_cgns_type, max_node_elem), dtype=int32)

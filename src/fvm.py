@@ -134,6 +134,72 @@ def RCM(pt_sur_pt:List[Set[int]], mesh:PartitionMesh):
     return mesh
 
 
+def ElemCG(elem_type, points):
+    """Obtain the centroid of the element and the centroid of the corresponding face"""
+    elemInfo = ElemInfo()
+
+    dim = points.shape[1]
+    Coord_CG = zeros((1, dim), dtype=float64)
+    nNodes = points.shape[0]
+    for iNode in range(nNodes):
+        Coord_CG += points[iNode]/float(nNodes)
+
+    Coord_FaceElems_CG = zeros((elemInfo.n_faces[elem_type], dim), dtype=float64)
+
+    for iFace in range(elemInfo.n_faces[elem_type]):
+        for iNode in range(elemInfo.n_nodes_face[elem_type, iFace]):
+            node_idx = elemInfo.faces[elem_type, iFace, iNode]
+            Coord_FaceElems_CG[iFace] += points[node_idx]/float(elemInfo.n_nodes_face[elem_type, iFace])
+
+    if False:
+        plt.figure()
+        for iNode in range(nNodes):
+            plt.plot(points[iNode, 0], points[iNode, 1], 'ko')
+            plt.text(points[iNode, 0], points[iNode, 1], str(iNode), fontsize=12)
+        plt.plot(Coord_CG[0, 0], Coord_CG[0, 1], 'ro', label='Element CG')
+        for iFace in range(elemInfo.n_faces[elem_type]):
+            plt.plot(Coord_FaceElems_CG[iFace, 0], Coord_FaceElems_CG[iFace, 1], 'go', label='Face Element CG' if iFace == 0 else '')
+        plt.legend()
+        plt.show()
+
+    return Coord_CG, Coord_FaceElems_CG
+
+def GetMeshCG(mesh:PartitionMesh):
+    All_Elem_CG = []
+    All_FaceElems_CG = []
+    All_Edge_CG = []
+
+    # body elements
+    for iElem in range(mesh.elem.GetTotalNum()):
+        Coord_CG, Coord_FaceElems_CG = ElemCG(mesh.elem_type[iElem], mesh.coords[_get_csr_row(mesh.elem, iElem)])
+        All_Elem_CG.append(Coord_CG)
+        All_FaceElems_CG.append(Coord_FaceElems_CG)
+    # boundary elements
+    All_BndElem_CG = []
+    All_FaceBndElems_CG = []
+    for iMarker in range(mesh.GetNumMarker()):
+        for iBndElem in range(mesh.markers[iMarker].GetNumElem()):
+            Coord_CG, Coord_FaceElems_CG = ElemCG(mesh.markers[iMarker].elem_type[iBndElem], \
+                                                  mesh.coords[_get_csr_row(mesh.markers[iMarker].elem_to_node, iBndElem)])
+            All_BndElem_CG.append(Coord_CG)
+            All_FaceBndElems_CG.append(Coord_FaceElems_CG)
+    # edge CG
+    for iEdge in range(mesh.nEdges):
+        iPoint, jPoint = mesh.edges[iEdge]
+        Coord_CG = (mesh.coords[iPoint] + mesh.coords[jPoint]) / 2.0
+        All_Edge_CG.append(Coord_CG.reshape(1, -1))
+
+    return All_Elem_CG, All_FaceElems_CG, All_BndElem_CG, All_FaceBndElems_CG, All_Edge_CG
+
+def FindEdge(edges, iPoint, jPoint):
+    for iEdge, edge in enumerate(edges):
+        if (edge[0] == iPoint and edge[1] == jPoint) or (edge[0] == jPoint and edge[1] == iPoint):
+            return iEdge
+    return -1
+
+def GetControlVolume(mesh:PartitionMesh, All_Elem_CG, All_FaceElems_CG, All_BndElem_CG, All_FaceBndElems_CG):
+    nDim = mesh.coords.shape[1]
+
 def build_fvm_struct(args, mesh:PartitionMesh,  RCM_ordering=False):
     """construct edges and vertices(boundary) data structure for FVM solver."""
     pt_sur_pt = GetPtSurPt(mesh)
@@ -155,11 +221,98 @@ def build_fvm_struct(args, mesh:PartitionMesh,  RCM_ordering=False):
 
     mesh.edges = edges
     mesh.nEdges = len(edges)
-    return edges, None
 
-def Metrics(mesh):
+    vertexs = CreateVertex(mesh)
+    mesh.vertexs = vertexs
+    return mesh
+
+def GetEdge_Normal_2D(Coord_Edge_CG, Coord_Elem_CG):
+    assert Coord_Elem_CG.shape[1] == 2 and Coord_Edge_CG.shape[1] == 2, "Only support 2D edge normal calculation."
+    # need to carefully determine the direction of the normal vector, the normal must belong to the small number point!!
+    normal = zeros(2, dtype=float64)
+    normal[0] = Coord_Elem_CG[0, 1] - Coord_Edge_CG[0, 1]
+    normal[1] = - (Coord_Elem_CG[0, 0] - Coord_Edge_CG[0, 0])
+    return normal
+    
+def GetVolume_2D(Coord_Edge_CG, Coord_Elem_CG, Coord_Point):
+    Coord_Edge_CG = Coord_Edge_CG[0]
+    Coord_Elem_CG = Coord_Elem_CG[0]
+    
+    vec_a = Coord_Elem_CG - Coord_Point
+    vec_b = Coord_Edge_CG - Coord_Point
+    return 0.5 * abs(vec_a[0] * vec_b[1] - vec_a[1] * vec_b[0])
+
+
+def GetEdge_Normal_3D(Coord_Elem_CG, Coord_Edge_CG, Coord_FaceElem_CG):
+    assert Coord_Elem_CG.shape[1] == 3 and Coord_Edge_CG.shape[0] == 3 and Coord_FaceElem_CG.shape[0] == 3, "Only support 3D edge normal calculation."
+    raise NotImplementedError("3D edge normal calculation is not implemented yet.")
+
+def Metrics(mesh:PartitionMesh):
     """compute edge normals, control volume, etc."""
-    pass
+    All_Elem_CG, All_FaceElems_CG, All_BndElem_CG, All_FaceBndElems_CG, All_Edge_CG = GetMeshCG(mesh)
+    nDim = mesh.coords.shape[1]
+    #
+    All_Edge_Normals = zeros((mesh.nEdges, nDim), dtype=float64)
+    All_Control_Volumes = zeros(mesh.n_point, dtype=float64)
+    elem_info = ElemInfo()
+    for iElem in range(mesh.elem.GetTotalNum()):
+        elem_type = mesh.elem_type[iElem]
+        for iFace in range(elem_info.n_faces[elem_type]):
+            if nDim == 2:
+                nEdgeFace = 1       # 2D 网格中每个面只有一条边
+            elif nDim == 3:
+                nEdgeFace = elem_info.n_nodes_face[elem_type, iFace] # 3D 网格中每个面由多个边组成
+            for iEdgesFace in range(nEdgeFace):
+                if nDim == 2:
+                    face_iPoint = mesh.elem.GetData(iElem, elem_info.faces[elem_type, iFace, 0])
+                    face_jPoint = mesh.elem.GetData(iElem, elem_info.faces[elem_type, iFace, 1])
+                if nDim == 3:
+                    face_iPoint = mesh.elem.GetData(iElem, elem_info.faces[elem_type, iFace, iEdgesFace])
+                    face_jPoint = mesh.elem.GetData(iElem, elem_info.faces[elem_type, iFace, (iEdgesFace+1)%nEdgeFace])
+                change_face_orientation = False
+                change_face_orientation = True if face_iPoint > face_jPoint else False
+                iEdge = FindEdge(mesh.edges, face_iPoint, face_jPoint)
+                #
+                Coord_Edge_CG = All_Edge_CG[iEdge]
+                Coord_Elem_CG = All_Elem_CG[iElem]
+                Coord_FaceElem_CG = All_FaceElems_CG[iElem][iFace]
+                Coord_FaceiPoint = mesh.coords[face_iPoint]
+                Coord_FacejPoint = mesh.coords[face_jPoint]
+                #
+                if False:
+                    plt.figure()
+                    nodes = mesh.elem.GetNumPart(iElem)
+                    elem_nodes = mesh.coords[[mesh.elem.GetData(iElem, k) for k in range(nodes)]]
+                    for iNode in range(nodes):
+                        plt.plot(elem_nodes[iNode, 0], elem_nodes[iNode, 1], 'ko')
+                        plt.text(elem_nodes[iNode, 0], elem_nodes[iNode, 1], str(iNode), fontsize=12)
+                    for iNode in range(nodes):
+                        for iNeighbor in range(elem_info.n_neighbor_nodes[elem_type, iNode]):
+                            neighbor_node_idx = elem_info.neighbor_nodes[elem_type, iNode, iNeighbor]
+                            plt.plot([elem_nodes[iNode, 0], elem_nodes[neighbor_node_idx, 0]], [elem_nodes[iNode, 1], elem_nodes[neighbor_node_idx, 1]], 'k-')
+                    plt.plot(Coord_Elem_CG[0, 0], Coord_Elem_CG[0, 1], 'ro', label='Element CG')
+                    plt.plot(Coord_FaceElem_CG[0], Coord_FaceElem_CG[1], 'go', label='Face Element CG')
+                    plt.plot(Coord_Edge_CG[0], Coord_Edge_CG[1], 'bx', label='Edge CG')
+                    plt.show()
+                if nDim == 2:
+                    if change_face_orientation:
+                        edge_normal = GetEdge_Normal_2D(Coord_Elem_CG, Coord_Edge_CG)
+                    else:
+                        edge_normal = GetEdge_Normal_2D(Coord_Edge_CG, Coord_Elem_CG)
+                    All_Edge_Normals[iEdge] += edge_normal
+                    All_Control_Volumes[face_iPoint] += GetVolume_2D(Coord_Edge_CG, Coord_Elem_CG, Coord_FaceiPoint)
+                    All_Control_Volumes[face_jPoint] += GetVolume_2D(Coord_Edge_CG, Coord_Elem_CG, Coord_FacejPoint)
+                elif nDim == 3:
+                    raise NotImplementedError("3D edge normal calculation is not implemented yet.")
+    # check edge normals
+    for iEdge in range(mesh.nEdges):
+        EPS = 1e-16
+        normal = All_Edge_Normals[iEdge]
+        norm = np.linalg.norm(normal)
+        if norm  == 0.0:
+            print('Warning: edge {} has near-zero normal vector.'.format(iEdge))
+            All_Edge_Normals[iEdge] = np.array([EPS*EPS]*nDim, dtype=float64)
+    return All_Edge_Normals, All_Control_Volumes
 
 def residual(mesh, field):
     """compute residual for FVM solver."""
